@@ -1,10 +1,36 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
-import '../models/station_model.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/utils/formatters.dart';
+import '../../../../core/widgets/custom_primary_button.dart';
+import '../../stations/models/station_model.dart';
+import '../models/order_model.dart';
+import '../services/order_service.dart';
 
-class CheckoutScreen extends StatelessWidget {
+class CheckoutView extends StatelessWidget {
   final Station station;
 
-  const CheckoutScreen({Key? key, required this.station}) : super(key: key);
+  const CheckoutView({super.key, required this.station});
+
+  void _confirmReservation(BuildContext context) {
+    final random = Random();
+    final code = (100000 + random.nextInt(900000)).toString();
+
+    final newOrder = OrderModel(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      station: station,
+      qrCodeData: code,
+      textCode: code,
+      date: DateTime.now(),
+    );
+
+    OrderService().addOrder(newOrder);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Reserva confirmada! Dirija-se ao caixa ou catraca.')),
+    );
+    Navigator.pop(context); 
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +48,7 @@ class CheckoutScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E), // Fundo do resumo adaptado para dark mode
+                color: AppColors.cardBackground,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: Colors.grey[800]!),
               ),
@@ -31,36 +57,25 @@ class CheckoutScreen extends StatelessWidget {
                 children: [
                   Text(station.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Text(station.address, style: TextStyle(color: Colors.grey[400])),
+                  Text(station.address, style: const TextStyle(color: AppColors.textSecondary)),
                   const Divider(height: 32, color: Colors.grey),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Total a pagar', style: TextStyle(fontSize: 16)),
-                      Text('R\$ ${station.price.toStringAsFixed(2)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                      Text(
+                        Formatters.formatCurrency(station.price), 
+                        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.primary)
+                      ),
                     ],
                   )
                 ],
               ),
             ),
             const Spacer(),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Reserva confirmada! Dirija-se ao caixa ou catraca.')),
-                  );
-                  Navigator.pop(context); 
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueAccent, 
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: const Text('Confirmar e Gerar Código', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              ),
+            CustomPrimaryButton(
+              text: 'Confirmar e Gerar Código',
+              onPressed: () => _confirmReservation(context),
             )
           ],
         ),

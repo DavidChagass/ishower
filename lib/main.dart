@@ -1,31 +1,21 @@
 import 'package:flutter/material.dart';
-import 'screens/home_screen.dart';
+import 'core/theme/app_theme.dart';
+import 'features/stations/views/home_view.dart';
 
 void main() {
   runApp(const IShowerApp());
 }
 
 class IShowerApp extends StatelessWidget {
-  const IShowerApp({Key? key}) : super(key: key);
+  const IShowerApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'iShower MVP',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(
-        primaryColor: Colors.blueAccent,
-        scaffoldBackgroundColor: const Color(0xFF121212), // Fundo escuro padrão
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF121212),
-          elevation: 0,
-        ),
-        colorScheme: const ColorScheme.dark(
-          primary: Colors.blueAccent,
-          secondary: Colors.blueAccent,
-        ),
-      ),
-      home: HomeScreen(),
+      theme: AppTheme.darkTheme,
+      home: const HomeView(),
     );
   }
 }
