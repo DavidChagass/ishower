@@ -6,6 +6,7 @@ import '../models/station_model.dart';
 
 class ApiService {
   static const String baseUrl = 'https://sua-api.com/api';
+  //DESCOMENTA AQUI PRA USAR A API :D
     // final response = await http.get(Uri.parse('$baseUrl/stations'));
     // if (response.statusCode == 200) {
     //   List data = json.decode(response.body);
