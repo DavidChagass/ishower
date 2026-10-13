@@ -11,11 +11,18 @@ class IShowerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'iShower MVP',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
-      home: const HomeView(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: AppTheme.themeModeNotifier,
+      builder: (context, currentThemeMode, _) {
+        return MaterialApp(
+          title: 'iShower MVP',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: currentThemeMode,
+          home: const HomeView(),
+        );
+      },
     );
   }
 }
