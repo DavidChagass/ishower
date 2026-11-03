@@ -9,6 +9,8 @@ class OrderModel {
   final List<String> extras;
   final double totalPrice;
   String status;
+  final String? scheduledTime; // Ex: '14:30' ou 'Entrada Imediata'
+  final DateTime? scheduledDate;
 
   OrderModel({
     required this.id,
@@ -19,5 +21,7 @@ class OrderModel {
     required this.totalPrice,
     this.extras = const [],
     this.status = 'ativo',
+    this.scheduledTime = 'Entrada Imediata',
+    this.scheduledDate,
   });
 }
