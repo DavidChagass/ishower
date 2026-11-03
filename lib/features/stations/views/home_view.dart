@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../../core/theme/app_colors.dart';
 import '../models/station_model.dart';
 import '../services/api_service.dart';
 import 'widgets/station_grid.dart';
 import 'widgets/station_map.dart';
+import '../../admin/views/admin_view.dart';
 import '../../orders/views/orders_view.dart';
 
 class HomeView extends StatefulWidget {
@@ -17,6 +19,7 @@ class _HomeViewState extends State<HomeView> {
   late Future<List<Station>> _stationsFuture;
 
   bool _showMap = false;
+  bool _isAdminMode = false;
 
   @override
   void initState() {
@@ -28,8 +31,23 @@ class _HomeViewState extends State<HomeView> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Chuveiros Próximos'),
-        actions: [
+        leadingWidth: 80,
+        leading: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Switch(
+              value: _isAdminMode,
+              activeThumbColor: AppColors.primary,
+              onChanged: (value) {
+                setState(() {
+                  _isAdminMode = value;
+                });
+              },
+            ),
+          ],
+        ),
+        title: Text(_isAdminMode ? 'Administração' : 'Chuveiros Próximos'),
+        actions: _isAdminMode ? null : [
           IconButton(
             icon: const Icon(Icons.confirmation_num_outlined),
             onPressed: () {
@@ -49,7 +67,9 @@ class _HomeViewState extends State<HomeView> {
           ),
         ],
       ),
-      body: FutureBuilder<List<Station>>(
+      body: _isAdminMode 
+        ? const AdminView()
+        : FutureBuilder<List<Station>>(
         future: _stationsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {

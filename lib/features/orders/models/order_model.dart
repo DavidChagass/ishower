@@ -6,7 +6,9 @@ class OrderModel {
   final String qrCodeData;
   final String textCode;
   final DateTime date;
-  final String status;
+  final List<String> extras;
+  final double totalPrice;
+  String status;
 
   OrderModel({
     required this.id,
@@ -14,6 +16,8 @@ class OrderModel {
     required this.qrCodeData,
     required this.textCode,
     required this.date,
+    required this.totalPrice,
+    this.extras = const [],
     this.status = 'ativo',
   });
 }

@@ -32,14 +32,24 @@ class OrderListTile extends StatelessWidget {
           children: [
             const SizedBox(height: 4),
             Text(
+              'Total: ${Formatters.formatCurrency(order.totalPrice)}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            if (order.extras.isNotEmpty)
+              Text(
+                'Adicionais: ${order.extras.join(", ")}',
+                style: TextStyle(color: Colors.grey[400], fontSize: 12),
+              ),
+            const SizedBox(height: 4),
+            Text(
               'Data: ${Formatters.formatDate(order.date)}',
               style: TextStyle(color: Colors.grey[400], fontSize: 12),
             ),
             const SizedBox(height: 4),
             Text(
               'Status: ${order.status.toUpperCase()}',
-              style: const TextStyle(
-                color: AppColors.statusAvailable,
+              style: TextStyle(
+                color: order.status == 'ativo' ? AppColors.statusAvailable : Colors.red,
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
               ),
