@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../auth/models/user_session.dart';
+import '../../auth/services/auth_service.dart';
 import '../models/station_model.dart';
 import '../services/api_service.dart';
 import 'widgets/station_grid.dart';
@@ -10,7 +12,9 @@ import '../../schedules/views/schedules_view.dart';
 import '../../orders/views/orders_view.dart';
 
 class HomeView extends StatefulWidget {
-  const HomeView({super.key});
+  final UserSession? session;
+
+  const HomeView({super.key, this.session});
 
   @override
   State<HomeView> createState() => _HomeViewState();
@@ -21,7 +25,6 @@ class _HomeViewState extends State<HomeView> {
   late Future<List<Station>> _stationsFuture;
 
   int _currentTabIndex = 0;
-  bool _isAdminMode = false;
 
   @override
   void initState() {
@@ -35,7 +38,14 @@ class _HomeViewState extends State<HomeView> {
     });
   }
 
-  String _getTitle() {
+  void _reloadStations() {
+    setState(() {
+      _stationsFuture = _apiService.fetchAvailableStations();
+    });
+  }
+
+  String _getTitle(bool isStaff) {
+    if (isStaff) return 'Administração';
     switch (_currentTabIndex) {
       case 0:
         return 'Chuveiros Próximos';
@@ -50,52 +60,26 @@ class _HomeViewState extends State<HomeView> {
     }
   }
 
-  void _reloadStations() {
-    setState(() {
-      _stationsFuture = _apiService.fetchAvailableStations();
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final activeSession = widget.session ?? AuthService().currentSession;
+    final isStaff = activeSession?.isStaff ?? false;
 
     return Scaffold(
       appBar: AppBar(
-        leadingWidth: 136,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 6.0),
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Switch(
-                  value: _isAdminMode,
-                  activeThumbColor: AppColors.primary,
-                  onChanged: (value) {
-                    setState(() {
-                      _isAdminMode = value;
-                      if (!value) {
-                        _stationsFuture = _apiService.fetchAvailableStations();
-                      }
-                    });
-                  },
-                ),
-                Text(
-                  _isAdminMode ? 'Admin' : 'Cliente',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: _isAdminMode ? AppColors.primary : Colors.grey,
-                  ),
-                ),
-              ],
-            ),
-          ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_getTitle(isStaff)),
+            if (activeSession != null)
+              Text(
+                '${activeSession.name} (${activeSession.roleLabel})',
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
         ),
-        title: Text(_isAdminMode ? 'Administração' : _getTitle()),
         actions: [
           IconButton(
             icon: Icon(
@@ -105,9 +89,15 @@ class _HomeViewState extends State<HomeView> {
             tooltip: isDark ? 'Ativar Modo Claro' : 'Ativar Modo Escuro',
             onPressed: AppTheme.toggleTheme,
           ),
+          if (activeSession != null)
+            IconButton(
+              icon: const Icon(Icons.logout_outlined),
+              tooltip: 'Sair da conta',
+              onPressed: () => AuthService().logout(),
+            ),
         ],
       ),
-      body: _isAdminMode
+      body: isStaff
           ? AdminView(onStationsChanged: _reloadStations)
           : FutureBuilder<List<Station>>(
               future: _stationsFuture,
@@ -133,7 +123,7 @@ class _HomeViewState extends State<HomeView> {
                 );
               },
             ),
-      bottomNavigationBar: _isAdminMode
+      bottomNavigationBar: isStaff
           ? null
           : NavigationBar(
               selectedIndex: _currentTabIndex,

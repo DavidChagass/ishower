@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:http/http.dart' as http;
+import '../../auth/services/auth_service.dart';
 import '../models/order_model.dart';
 import '../../stations/models/station_model.dart';
 import '../../stations/services/api_service.dart';
@@ -12,63 +13,20 @@ class OrderService {
     return _instance;
   }
 
-  static const String testOrderId = '44444444-4444-4444-8444-444444444444';
-  static const String testOrderCode = '749281';
-  static const String testOrderQrPayload =
-      'ISHOWER:V1:44444444-4444-4444-8444-444444444444:749281';
-
-  OrderService._internal() {
-    _orders.add(_createSingleTestOrder());
-  }
+  OrderService._internal();
 
   final List<OrderModel> _orders = [];
 
-  /// Quando ativo, mantém um único pedido e um único QR Code padronizado por aplicativo,
-  /// permitindo que múltiplos dispositivos leiam o mesmo QR Code de forma independente.
-  bool _isTestMockMode = true;
-
-  bool get isTestMockMode => _isTestMockMode;
-
-  static OrderModel _createSingleTestOrder() {
-    return OrderModel(
-      id: testOrderId,
-      station: Station(
-        id: '11111111-1111-4111-8111-111111111111',
-        name: 'Posto Graal - BR 381',
-        address: 'Rodovia Fernão Dias, Km 45 - Betim/MG',
-        distance: 2.5,
-        price: 15.00,
-        isAvailable: true,
-        lat: -19.9554,
-        lng: -44.0445,
-        operatingHours: '24 Horas',
-      ),
-      qrCodeData: testOrderQrPayload,
-      textCode: testOrderCode,
-      date: DateTime.now(),
-      totalPrice: 22.00,
-      extras: const ['Toalha', 'Sabonete'],
-      scheduledTime: 'Hoje às 14:30',
-      status: 'ativo',
-    );
-  }
-
-  /// Ativa ou desativa o Modo de Teste (Pedido e QR Code Únicos) na seção do Administrador.
-  /// Ao ativar (ou resetar), garante exatamente 1 único pedido válido ('749281') na aba de clientes.
-  void setTestMockMode(bool enabled) {
-    _isTestMockMode = enabled;
-    if (enabled) {
-      resetSingleTestOrder();
+  Map<String, String> _authHeaders({bool jsonContentType = false}) {
+    final headers = <String, String>{};
+    if (jsonContentType) {
+      headers['Content-Type'] = 'application/json';
     }
-  }
-
-  /// Restaura o pedido único de teste para o estado 'ativo' neste aplicativo.
-  OrderModel resetSingleTestOrder() {
-    final singleOrder = _createSingleTestOrder();
-    _orders
-      ..clear()
-      ..add(singleOrder);
-    return singleOrder;
+    final token = AuthService().currentSession?.token ?? '';
+    if (token.isNotEmpty && !token.startsWith('local-')) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    return headers;
   }
 
   static String extractLookupCode(String raw) {
@@ -83,29 +41,27 @@ class OrderService {
     return trimmed;
   }
 
-  List<OrderModel> get orders => List.unmodifiable(_orders);
+  List<OrderModel> get orders {
+    final session = AuthService().currentSession;
+    if (session != null &&
+        (session.role == 'PARTNER_MANAGER' ||
+            session.role == 'PARTNER_OPERATOR') &&
+        session.stationId != null &&
+        session.stationId!.isNotEmpty) {
+      return List.unmodifiable(
+        _orders.where((o) => o.station.id == session.stationId),
+      );
+    }
+    return List.unmodifiable(_orders);
+  }
 
   Future<List<OrderModel>> fetchOrders() async {
-    // Em modo de teste (mockup por aplicativo), preserva o pedido único local
-    // para que a aba de clientes exiba apenas o único pedido e o único QR Code.
-    if (_isTestMockMode) {
-      if (_orders.isEmpty) {
-        _orders.add(_createSingleTestOrder());
-      } else if (_orders.length > 1) {
-        final currentTest = _orders.firstWhere(
-          (o) => o.textCode == testOrderCode,
-          orElse: _createSingleTestOrder,
-        );
-        _orders
-          ..clear()
-          ..add(currentTest);
-      }
-      return orders;
-    }
-
     try {
       final response = await http
-          .get(Uri.parse('${ApiService.baseUrl}/vouchers'))
+          .get(
+            Uri.parse('${ApiService.baseUrl}/vouchers'),
+            headers: _authHeaders(),
+          )
           .timeout(const Duration(seconds: 2));
 
       if (response.statusCode == 200) {
@@ -125,12 +81,6 @@ class OrderService {
   }
 
   void addOrder(OrderModel order) {
-    if (_isTestMockMode) {
-      _orders
-        ..clear()
-        ..add(order);
-      return;
-    }
     _orders.insert(0, order);
   }
 
@@ -140,29 +90,11 @@ class OrderService {
     required double totalPrice,
     required String scheduledTime,
   }) async {
-    if (_isTestMockMode) {
-      final single = OrderModel(
-        id: testOrderId,
-        station: station,
-        qrCodeData: testOrderQrPayload,
-        textCode: testOrderCode,
-        date: DateTime.now(),
-        totalPrice: totalPrice,
-        extras: extras,
-        scheduledTime: scheduledTime,
-        status: 'ativo',
-      );
-      _orders
-        ..clear()
-        ..add(single);
-      return single;
-    }
-
     try {
       final response = await http
           .post(
             Uri.parse('${ApiService.baseUrl}/vouchers'),
-            headers: {'Content-Type': 'application/json'},
+            headers: _authHeaders(jsonContentType: true),
             body: jsonEncode({
               'station_id': station.id,
               'scheduled_time': scheduledTime,
@@ -204,18 +136,11 @@ class OrderService {
     final cleanCode = extractLookupCode(rawTrimmed);
     if (cleanCode.isEmpty) return null;
 
-    // Quando em Modo de Teste (ou ao ler o QR Code universal de teste '749281'),
-    // valida localmente por aplicativo para que dois dispositivos diferentes possam
-    // ler o mesmo QR Code de forma independente.
-    if (_isTestMockMode || cleanCode == testOrderCode) {
-      return validateOrder(rawTrimmed);
-    }
-
     try {
       final response = await http
           .post(
             Uri.parse('${ApiService.baseUrl}/scan/voucher'),
-            headers: {'Content-Type': 'application/json'},
+            headers: _authHeaders(jsonContentType: true),
             body: jsonEncode({'code': rawTrimmed}),
           )
           .timeout(const Duration(seconds: 3));
@@ -235,7 +160,9 @@ class OrderService {
           }
           return validated;
         }
-      } else if (response.statusCode == 404 || response.statusCode == 409) {
+      } else if (response.statusCode == 403 ||
+          response.statusCode == 404 ||
+          response.statusCode == 409) {
         await fetchOrders();
         return null;
       }
@@ -248,6 +175,7 @@ class OrderService {
 
   OrderModel? validateOrder(String code) {
     final lookup = extractLookupCode(code);
+    final session = AuthService().currentSession;
     try {
       final order = _orders.firstWhere(
         (o) =>
@@ -256,21 +184,19 @@ class OrderService {
             o.qrCodeData == lookup ||
             o.id == lookup,
       );
+      if (session != null &&
+          (session.role == 'PARTNER_MANAGER' ||
+              session.role == 'PARTNER_OPERATOR') &&
+          session.stationId != null &&
+          session.stationId != order.station.id) {
+        return null;
+      }
       if (order.status == 'ativo') {
         order.status = 'usado';
         return order;
       }
       return null;
     } catch (_) {
-      // Caso este dispositivo tenha acabado de ler um QR Code ISHOWER:V1:... gerado em outro aparelho
-      // e ainda não o tenha na lista local, cria e valida na memória deste aplicativo:
-      if (lookup == testOrderCode ||
-          code.trim().toUpperCase().startsWith('ISHOWER:V1:')) {
-        final externalOrder = _createSingleTestOrder();
-        externalOrder.status = 'usado';
-        _orders.insert(0, externalOrder);
-        return externalOrder;
-      }
       return null;
     }
   }

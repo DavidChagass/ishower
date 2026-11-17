@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/custom_primary_button.dart';
+import '../../auth/services/auth_service.dart';
 import '../../stations/models/station_model.dart';
 import '../services/order_service.dart';
 import 'widgets/qr_code_sheet.dart';
@@ -25,6 +26,7 @@ class _CheckoutViewState extends State<CheckoutView> {
   late List<StationServiceItem> _availableServices;
   final Set<String> _selectedServiceNames = {};
   bool _isSubmitting = false;
+  String _paymentMethod = 'wallet'; // 'wallet' | 'pix'
 
   @override
   void initState() {
@@ -76,6 +78,10 @@ class _CheckoutViewState extends State<CheckoutView> {
       totalPrice: _totalPrice,
       scheduledTime: _currentSchedule,
     );
+
+    if (_paymentMethod == 'wallet') {
+      AuthService().deductBalance(_totalPrice);
+    }
 
     if (!context.mounted) return;
     setState(() => _isSubmitting = false);
@@ -225,7 +231,92 @@ class _CheckoutViewState extends State<CheckoutView> {
                 ],
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 20),
+            Text(
+              'Forma de Pagamento (Simulação)',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textCol),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: borderCol),
+              ),
+              child: Column(
+                children: [
+                  InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () => setState(() => _paymentMethod = 'wallet'),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _paymentMethod == 'wallet'
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_off,
+                            color: primaryBlue,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Saldo Carteira iShower',
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textCol),
+                                ),
+                                Text(
+                                  'Disponível: ${Formatters.formatCurrency(AuthService().currentSession?.balance ?? 150.0)}',
+                                  style: TextStyle(fontSize: 12, color: textSub),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 8),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () => setState(() => _paymentMethod = 'pix'),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _paymentMethod == 'pix'
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_off,
+                            color: primaryBlue,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'PIX Instantâneo (Mockup)',
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textCol),
+                                ),
+                                Text(
+                                  'Aprovação imediata para geração do QR Code',
+                                  style: TextStyle(fontSize: 12, color: textSub),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [

@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/custom_primary_button.dart';
-import '../../orders/models/order_model.dart';
+import '../../auth/services/auth_service.dart';
 import '../../orders/services/order_service.dart';
 import '../../orders/views/widgets/qr_code_sheet.dart';
 import '../../stations/models/station_model.dart';
@@ -136,7 +135,7 @@ class _AdminViewState extends State<AdminView> {
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Código inválido, não encontrado ou já utilizado.'),
+          content: Text('Código inválido, pertence a outro posto ou já foi utilizado.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -144,14 +143,10 @@ class _AdminViewState extends State<AdminView> {
   }
 
   Future<void> _openScanner() async {
-    final activeOrders = _orderService.orders
-        .where((o) => o.status.toLowerCase() == 'ativo')
-        .toList();
-
     final scannedCode = await Navigator.push<String>(
       context,
       MaterialPageRoute(
-        builder: (context) => ScannerPage(activeOrders: activeOrders),
+        builder: (context) => const ScannerPage(),
       ),
     );
 
@@ -165,18 +160,28 @@ class _AdminViewState extends State<AdminView> {
   }
 
   Future<void> _toggleStationStatus(Station station) async {
-    final updated = await _apiService.toggleStationAvailability(
-      station,
-      !station.isAvailable,
-    );
-    if (!mounted) return;
-    setState(() {
-      final idx = _stations.indexWhere((s) => s.id == station.id);
-      if (idx >= 0) {
-        _stations[idx] = updated;
-      }
-    });
-    widget.onStationsChanged?.call();
+    try {
+      final updated = await _apiService.toggleStationAvailability(
+        station,
+        !station.isAvailable,
+      );
+      if (!mounted) return;
+      setState(() {
+        final idx = _stations.indexWhere((s) => s.id == station.id);
+        if (idx >= 0) {
+          _stations[idx] = updated;
+        }
+      });
+      widget.onStationsChanged?.call();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -185,43 +190,9 @@ class _AdminViewState extends State<AdminView> {
     super.dispose();
   }
 
-  void _handleToggleTestMock(bool value) {
-    setState(() {
-      _orderService.setTestMockMode(value);
-    });
-    if (!value) {
-      _refreshData();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Modo de Teste ativo: 1 pedido válido (#749281) e 1 QR Code disponíveis na aba de Clientes.',
-          ),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-  }
-
-  void _handleResetSingleTestOrder() {
-    setState(() {
-      _orderService.setTestMockMode(true);
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Pedido único (#749281) restaurado como ATIVO neste aplicativo!',
-        ),
-        backgroundColor: Colors.green,
-      ),
-    );
-  }
-
   Widget _buildScannerPage(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final activeOrders = _orderService.orders
-        .where((o) => o.status.toLowerCase() == 'ativo')
-        .toList();
+    final session = AuthService().currentSession;
+    final isManager = session != null && !session.isSuperAdmin;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
@@ -230,109 +201,40 @@ class _AdminViewState extends State<AdminView> {
         children: [
           const Icon(
             Icons.admin_panel_settings,
-            size: 64,
+            size: 72,
             color: AppColors.primary,
           ),
-          const SizedBox(height: 12),
-          const Text(
-            'Área do Administrador',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          const SizedBox(height: 16),
+          Text(
+            isManager ? 'Recepção do Posto' : 'Área do Administrador',
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Insira o código do pedido manualmente ou faça a leitura do QR Code do cliente para liberar o uso do chuveiro.',
+          Text(
+            isManager && session.stationName != null
+                ? 'Escopo vinculado: ${session.stationName}'
+                : 'Insira o código do pedido manualmente ou faça a leitura do QR Code do cliente para liberar o uso do chuveiro.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey),
+            style: const TextStyle(color: Colors.grey),
           ),
-          const SizedBox(height: 18),
-          // Card com o Toggler de Geração de Teste (Pedido e QR Code Únicos por Aplicativo)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: isDark ? AppColors.surface : AppColors.lightSurface,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: _orderService.isTestMockMode
-                    ? AppColors.primary
-                    : (isDark ? Colors.white12 : AppColors.lightBorder),
-                width: 1.4,
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.science_outlined, color: AppColors.primary, size: 20),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Gerar Pedido e QR Code Único (Teste)',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                          ),
-                          Text(
-                            'Mantém 1 único pedido válido (#749281) na aba de Clientes, válido por aplicativo.',
-                            style: TextStyle(fontSize: 11, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Switch(
-                      key: const Key('admin_test_mock_switch'),
-                      value: _orderService.isTestMockMode,
-                      activeThumbColor: AppColors.primary,
-                      onChanged: _handleToggleTestMock,
-                    ),
-                  ],
-                ),
-                if (_orderService.isTestMockMode) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        activeOrders.isNotEmpty
-                            ? 'Status neste app: ATIVO (#749281)'
-                            : 'Status neste app: JÁ LIDO (#749281)',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: activeOrders.isNotEmpty ? Colors.green : Colors.orange,
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: _handleResetSingleTestOrder,
-                        icon: const Icon(Icons.restart_alt, size: 16),
-                        label: const Text('Resetar QR Único', style: TextStyle(fontSize: 12)),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 36),
           TextField(
             controller: _codeController,
             decoration: const InputDecoration(
               labelText: 'Código do Pedido',
-              hintText: 'Ex: 749281 ou payload QR',
+              hintText: 'Ex: 749281',
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.password),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           CustomPrimaryButton(
             text: _isValidating ? 'Validando...' : 'Validar Código',
             onPressed: _isValidating ? null : () => _validateCode(_codeController.text),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           const Divider(),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
@@ -346,129 +248,6 @@ class _AdminViewState extends State<AdminView> {
                 padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
                 side: const BorderSide(color: AppColors.primary, width: 1.5),
               ),
-            ),
-          ),
-          const SizedBox(height: 28),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isDark ? AppColors.surface : AppColors.lightSurface,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: isDark ? Colors.white12 : AppColors.lightBorder,
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.qr_code_2, color: AppColors.primary, size: 20),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'Leitura Rápida de QR Codes Ativos',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh, size: 18),
-                      tooltip: 'Atualizar lista',
-                      onPressed: _refreshData,
-                    ),
-                  ],
-                ),
-                const Text(
-                  'Toque em um QR Code ativo abaixo para simular a leitura óptica imediata ou inspecionar o código:',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                const SizedBox(height: 12),
-                if (activeOrders.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Text(
-                      'Nenhum QR Code pendente de leitura no momento.',
-                      style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.grey),
-                    ),
-                  )
-                else
-                  ...activeOrders.map(
-                    (order) => Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: isDark ? Colors.black26 : Colors.white,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: AppColors.primary.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () => QrCodeSheet.show(context, order),
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: QrImageView(
-                                data: order.qrCodeData,
-                                version: QrVersions.auto,
-                                size: 54,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Código: ${order.textCode}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                Text(
-                                  order.station.name,
-                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                ),
-                                if (order.extras.isNotEmpty)
-                                  Text(
-                                    'Adicionais: ${order.extras.join(", ")}',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          ElevatedButton.icon(
-                            onPressed: _isValidating
-                                ? null
-                                : () => _validateCode(
-                                      order.qrCodeData,
-                                      sourceLabel: 'QR Code Lido (${order.textCode})',
-                                    ),
-                            icon: const Icon(Icons.qr_code_scanner, size: 16),
-                            label: const Text('Ler QR'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
             ),
           ),
         ],
@@ -655,24 +434,29 @@ class _AdminViewState extends State<AdminView> {
   }
 
   Widget _buildStationsAdminPage(BuildContext context) {
+    final session = AuthService().currentSession;
+    final isManager = session != null && !session.isSuperAdmin;
+
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Gestão de Postos Credenciados',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      isManager ? 'Meu Posto Credenciado' : 'Gestão de Postos Credenciados',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      'Controle a disponibilidade operacional e confira os serviços de cada unidade.',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                      isManager
+                          ? 'Controle a disponibilidade operacional e serviços da sua unidade.'
+                          : 'Controle a disponibilidade operacional e confira os serviços de cada unidade.',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                   ],
                 ),
@@ -821,9 +605,7 @@ class _AdminViewState extends State<AdminView> {
 }
 
 class ScannerPage extends StatefulWidget {
-  final List<OrderModel> activeOrders;
-
-  const ScannerPage({super.key, this.activeOrders = const []});
+  const ScannerPage({super.key});
 
   @override
   State<ScannerPage> createState() => _ScannerPageState();
@@ -895,7 +677,6 @@ class _ScannerPageState extends State<ScannerPage> {
               }
             },
           ),
-          // Moldura visual de escaneamento de QR Code
           Center(
             child: Container(
               width: 240,
@@ -906,45 +687,6 @@ class _ScannerPageState extends State<ScannerPage> {
               ),
             ),
           ),
-          if (widget.activeOrders.isNotEmpty)
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: Container(
-                width: double.infinity,
-                margin: const EdgeInsets.all(16),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.82),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Simular leitura de QR Code (Modo Emulador / Sem Câmera):',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: widget.activeOrders.map((o) {
-                        return ActionChip(
-                          avatar: const Icon(Icons.qr_code, size: 16, color: AppColors.primary),
-                          label: Text('QR ${o.textCode} (${o.station.name})'),
-                          onPressed: () => _completeScan(o.qrCodeData),
-                        );
-                      }).toList(),
-                    ),
-                  ],
-                ),
-              ),
-            ),
         ],
       ),
     );

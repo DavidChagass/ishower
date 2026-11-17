@@ -1,36 +1,79 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../auth/services/auth_service.dart';
 import '../models/station_model.dart';
 
 class ApiService {
   static const String baseUrl = 'http://localhost:3000/api/v1';
 
+  Map<String, String> _authHeaders({bool jsonContentType = false}) {
+    final headers = <String, String>{};
+    if (jsonContentType) {
+      headers['Content-Type'] = 'application/json';
+    }
+    final token = AuthService().currentSession?.token ?? '';
+    if (token.isNotEmpty && !token.startsWith('local-')) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    return headers;
+  }
+
   Future<List<Station>> fetchAvailableStations() async {
+    final session = AuthService().currentSession;
+    final scopedStationId =
+        (session != null &&
+                (session.role == 'PARTNER_MANAGER' ||
+                    session.role == 'PARTNER_OPERATOR'))
+            ? session.stationId
+            : null;
+
     try {
       final response = await http
-          .get(Uri.parse('$baseUrl/stations'))
+          .get(
+            Uri.parse('$baseUrl/stations'),
+            headers: _authHeaders(),
+          )
           .timeout(const Duration(seconds: 2));
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
-        return data
+        final stations = data
             .whereType<Map<String, dynamic>>()
             .map(Station.fromJson)
             .toList();
+        if (scopedStationId != null && scopedStationId.isNotEmpty) {
+          return stations.where((s) => s.id == scopedStationId).toList();
+        }
+        return stations;
       }
     } catch (_) {
       // Fallback para dados locais caso o servidor não esteja acessível (ex: testes de widget)
     }
 
-    return _fallbackStations();
+    final fallback = _fallbackStations();
+    if (scopedStationId != null && scopedStationId.isNotEmpty) {
+      return fallback.where((s) => s.id == scopedStationId).toList();
+    }
+    return fallback;
   }
 
-  Future<Station> toggleStationAvailability(Station station, bool nextAvailable) async {
+  Future<Station> toggleStationAvailability(
+      Station station, bool nextAvailable) async {
+    final session = AuthService().currentSession;
+    if (session != null &&
+        (session.role == 'PARTNER_MANAGER' ||
+            session.role == 'PARTNER_OPERATOR') &&
+        session.stationId != null &&
+        session.stationId != station.id) {
+      throw Exception(
+          'Você só possui permissão para alterar o posto ao qual está vinculado.');
+    }
+
     try {
       final response = await http
           .put(
             Uri.parse('$baseUrl/stations/${station.id}'),
-            headers: {'Content-Type': 'application/json'},
+            headers: _authHeaders(jsonContentType: true),
             body: jsonEncode({
               'active': nextAvailable,
             }),
@@ -40,8 +83,11 @@ class ApiService {
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
         return Station.fromJson(data);
+      } else if (response.statusCode == 403) {
+        throw Exception('Sem permissão para alterar este posto.');
       }
-    } catch (_) {
+    } catch (e) {
+      if (e.toString().contains('permissão')) rethrow;
       // Fallback local caso o backend esteja offline
     }
 
