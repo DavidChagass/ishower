@@ -50,26 +50,50 @@ class _HomeViewState extends State<HomeView> {
     }
   }
 
+  void _reloadStations() {
+    setState(() {
+      _stationsFuture = _apiService.fetchAvailableStations();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
-        leadingWidth: 70,
-        leading: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Switch(
-              value: _isAdminMode,
-              activeThumbColor: AppColors.primary,
-              onChanged: (value) {
-                setState(() {
-                  _isAdminMode = value;
-                });
-              },
+        leadingWidth: 136,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 6.0),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Switch(
+                  value: _isAdminMode,
+                  activeThumbColor: AppColors.primary,
+                  onChanged: (value) {
+                    setState(() {
+                      _isAdminMode = value;
+                      if (!value) {
+                        _stationsFuture = _apiService.fetchAvailableStations();
+                      }
+                    });
+                  },
+                ),
+                Text(
+                  _isAdminMode ? 'Admin' : 'Cliente',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: _isAdminMode ? AppColors.primary : Colors.grey,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
         title: Text(_isAdminMode ? 'Administração' : _getTitle()),
         actions: [
@@ -84,7 +108,7 @@ class _HomeViewState extends State<HomeView> {
         ],
       ),
       body: _isAdminMode
-          ? const AdminView()
+          ? AdminView(onStationsChanged: _reloadStations)
           : FutureBuilder<List<Station>>(
               future: _stationsFuture,
               builder: (context, snapshot) {

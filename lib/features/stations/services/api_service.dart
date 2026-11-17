@@ -1,15 +1,73 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../models/station_model.dart';
 
 class ApiService {
-  static const String baseUrl = 'https://sua-api.com/api';
+  static const String baseUrl = 'http://localhost:3000/api/v1';
 
   Future<List<Station>> fetchAvailableStations() async {
-    await Future.delayed(const Duration(milliseconds: 300));
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/stations'))
+          .timeout(const Duration(seconds: 2));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data
+            .whereType<Map<String, dynamic>>()
+            .map(Station.fromJson)
+            .toList();
+      }
+    } catch (_) {
+      // Fallback para dados locais caso o servidor não esteja acessível (ex: testes de widget)
+    }
+
+    return _fallbackStations();
+  }
+
+  Future<Station> toggleStationAvailability(Station station, bool nextAvailable) async {
+    try {
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/stations/${station.id}'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'active': nextAvailable,
+            }),
+          )
+          .timeout(const Duration(seconds: 3));
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        return Station.fromJson(data);
+      }
+    } catch (_) {
+      // Fallback local caso o backend esteja offline
+    }
+
+    return Station(
+      id: station.id,
+      name: station.name,
+      address: station.address,
+      distance: station.distance,
+      price: station.price,
+      isAvailable: nextAvailable,
+      lat: station.lat,
+      lng: station.lng,
+      operatingHours: station.operatingHours,
+      maxShowerMinutes: station.maxShowerMinutes,
+      cleaningDuration: station.cleaningDuration,
+      availableTimeSlots: station.availableTimeSlots,
+      services: station.services,
+    );
+  }
+
+  List<Station> _fallbackStations() {
     return [
       Station(
-        id: '1',
+        id: '11111111-1111-4111-8111-111111111111',
         name: 'Posto Graal - BR 381',
-        address: 'Rodovia Fernão Dias, Km 45',
+        address: 'Rodovia Fernão Dias, Km 45 - Betim/MG',
         distance: 2.5,
         price: 15.00,
         isAvailable: true,
@@ -25,9 +83,9 @@ class ApiService {
         ],
       ),
       Station(
-        id: '2',
+        id: '22222222-2222-4222-8222-222222222222',
         name: 'Posto Ipiranga Rota 26',
-        address: 'Av. Amazonas, 4500',
+        address: 'Av. Amazonas, 4500 - Contagem/MG',
         distance: 5.0,
         price: 12.50,
         isAvailable: true,
@@ -42,9 +100,9 @@ class ApiService {
         ],
       ),
       Station(
-        id: '3',
+        id: '33333333-3333-4333-8333-333333333333',
         name: 'Posto Petrobras - Parada Certa',
-        address: 'Anel Rodoviário, Km 12',
+        address: 'Anel Rodoviário, Km 12 - Belo Horizonte/MG',
         distance: 8.2,
         price: 20.00,
         isAvailable: false,
@@ -54,7 +112,7 @@ class ApiService {
         maxShowerMinutes: 25,
         cleaningDuration: '25 - 40 min',
         availableTimeSlots: [
-          '10:00', '11:00', '14:00', '15:00', '17:00', '18:00',
+          '10:00', '01:00', '14:00', '15:00', '17:00', '18:00',
           '20:00', '21:00'
         ],
       ),

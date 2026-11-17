@@ -1,10 +1,8 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/custom_primary_button.dart';
 import '../../stations/models/station_model.dart';
-import '../models/order_model.dart';
 import '../services/order_service.dart';
 import 'widgets/qr_code_sheet.dart';
 
@@ -24,45 +22,63 @@ class CheckoutView extends StatefulWidget {
 
 class _CheckoutViewState extends State<CheckoutView> {
   late String _currentSchedule;
-  bool _wantsTowel = false;
-  bool _wantsSoap = false;
-
-  final double _towelPrice = 5.0;
-  final double _soapPrice = 2.0;
+  late List<StationServiceItem> _availableServices;
+  final Set<String> _selectedServiceNames = {};
+  bool _isSubmitting = false;
 
   @override
   void initState() {
     super.initState();
     _currentSchedule = widget.scheduledTime ?? 'Entrada Imediata';
+    final activeServices = widget.station.services.where((s) => s.active).toList();
+    if (activeServices.isNotEmpty) {
+      _availableServices = activeServices;
+    } else {
+      _availableServices = const [
+        StationServiceItem(
+          id: 'default-towel',
+          name: 'Toalha',
+          description: 'Toalha de banho higienizada',
+          priceCents: 500,
+        ),
+        StationServiceItem(
+          id: 'default-soap',
+          name: 'Sabonete',
+          description: 'Sabonete individual',
+          priceCents: 200,
+        ),
+      ];
+    }
   }
 
   double get _totalPrice {
     double total = widget.station.price;
-    if (_wantsTowel) total += _towelPrice;
-    if (_wantsSoap) total += _soapPrice;
+    for (final srv in _availableServices) {
+      if (_selectedServiceNames.contains(srv.name)) {
+        total += srv.price;
+      }
+    }
     return total;
   }
 
-  void _confirmReservation(BuildContext context) {
-    final random = Random();
-    final code = (100000 + random.nextInt(900000)).toString();
+  Future<void> _confirmReservation(BuildContext context) async {
+    if (_isSubmitting) return;
+    setState(() => _isSubmitting = true);
 
-    final List<String> extras = [];
-    if (_wantsTowel) extras.add('Toalha');
-    if (_wantsSoap) extras.add('Sabonete');
+    final List<String> extras = _availableServices
+        .where((srv) => _selectedServiceNames.contains(srv.name))
+        .map((srv) => srv.name)
+        .toList();
 
-    final newOrder = OrderModel(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+    final newOrder = await OrderService().createOrder(
       station: widget.station,
-      qrCodeData: code,
-      textCode: code,
-      date: DateTime.now(),
-      totalPrice: _totalPrice,
       extras: extras,
+      totalPrice: _totalPrice,
       scheduledTime: _currentSchedule,
     );
 
-    OrderService().addOrder(newOrder);
+    if (!context.mounted) return;
+    setState(() => _isSubmitting = false);
 
     showModalBottomSheet(
       context: context,
@@ -128,14 +144,14 @@ class _CheckoutViewState extends State<CheckoutView> {
                   ),
                   const SizedBox(height: 8),
 
-                  // Regras: 25 min banho + limpeza
+                  // Regras: tempo limite de banho + limpeza
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('Tempo de banho:', style: TextStyle(fontSize: 14, color: textSub)),
-                      const Text(
-                        '25 minutos limite',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.accentGold),
+                      Text(
+                        '${widget.station.maxShowerMinutes} minutos limite',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.accentGold),
                       ),
                     ],
                   ),
@@ -180,21 +196,32 @@ class _CheckoutViewState extends State<CheckoutView> {
               ),
               child: Column(
                 children: [
-                  CheckboxListTile(
-                    title: Text('Toalha', style: TextStyle(color: textCol, fontWeight: FontWeight.w500)),
-                    subtitle: Text('+ ${Formatters.formatCurrency(_towelPrice)}', style: TextStyle(color: primaryBlue)),
-                    value: _wantsTowel,
-                    activeColor: primaryBlue,
-                    onChanged: (val) => setState(() => _wantsTowel = val ?? false),
-                  ),
-                  Divider(height: 1, color: borderCol),
-                  CheckboxListTile(
-                    title: Text('Sabonete', style: TextStyle(color: textCol, fontWeight: FontWeight.w500)),
-                    subtitle: Text('+ ${Formatters.formatCurrency(_soapPrice)}', style: TextStyle(color: primaryBlue)),
-                    value: _wantsSoap,
-                    activeColor: primaryBlue,
-                    onChanged: (val) => setState(() => _wantsSoap = val ?? false),
-                  ),
+                  for (int i = 0; i < _availableServices.length; i++) ...[
+                    if (i > 0) Divider(height: 1, color: borderCol),
+                    CheckboxListTile(
+                      title: Text(
+                        _availableServices[i].name,
+                        style: TextStyle(color: textCol, fontWeight: FontWeight.w500),
+                      ),
+                      subtitle: Text(
+                        _availableServices[i].description.isNotEmpty
+                            ? '${_availableServices[i].description} · + ${Formatters.formatCurrency(_availableServices[i].price)}'
+                            : '+ ${Formatters.formatCurrency(_availableServices[i].price)}',
+                        style: TextStyle(color: primaryBlue),
+                      ),
+                      value: _selectedServiceNames.contains(_availableServices[i].name),
+                      activeColor: primaryBlue,
+                      onChanged: (val) {
+                        setState(() {
+                          if (val == true) {
+                            _selectedServiceNames.add(_availableServices[i].name);
+                          } else {
+                            _selectedServiceNames.remove(_availableServices[i].name);
+                          }
+                        });
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -216,9 +243,9 @@ class _CheckoutViewState extends State<CheckoutView> {
             const SizedBox(height: 24),
             CustomPrimaryButton(
               height: 48,
-              text: 'Confirmar e Gerar Código',
+              text: _isSubmitting ? 'Registrando Pedido...' : 'Confirmar e Gerar Código',
               icon: Icons.qr_code,
-              onPressed: () => _confirmReservation(context),
+              onPressed: _isSubmitting ? null : () => _confirmReservation(context),
             ),
           ],
         ),
