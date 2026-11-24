@@ -8,9 +8,10 @@ class OrderModel {
   final DateTime date;
   final List<String> extras;
   final double totalPrice;
-  String status;
-  final String? scheduledTime; // Ex: '14:30' ou 'Entrada Imediata'
+  String status; // 'ativo' | 'usado' | 'cancelado'
+  final String? scheduledTime;
   final DateTime? scheduledDate;
+  final String? driverName;
 
   OrderModel({
     required this.id,
@@ -23,11 +24,22 @@ class OrderModel {
     this.status = 'ativo',
     this.scheduledTime = 'Entrada Imediata',
     this.scheduledDate,
+    this.driverName,
   });
+
+  bool get isActive => status.toLowerCase() == 'ativo';
+  bool get isCancelled => status.toLowerCase() == 'cancelado';
 
   factory OrderModel.fromJson(Map<String, dynamic> json) {
     final rawStatus = (json['status'] ?? 'PENDING').toString().toUpperCase();
-    final mappedStatus = (rawStatus == 'PENDING' || rawStatus == 'ATIVO') ? 'ativo' : 'usado';
+    String mappedStatus = 'usado';
+    if (rawStatus == 'PENDING' || rawStatus == 'ATIVO') {
+      mappedStatus = 'ativo';
+    } else if (rawStatus == 'CANCELLED' ||
+        rawStatus == 'REVOKED' ||
+        rawStatus == 'CANCELADO') {
+      mappedStatus = 'cancelado';
+    }
 
     final rawTotalPrice = json['total_price'];
     final rawTotalCents = json['total_amount_cents'];
@@ -51,17 +63,20 @@ class OrderModel {
 
     final textCode = (json['text_code'] ?? json['id'] ?? '').toString();
     final qrCodeData = (json['qr_code_data'] ?? textCode).toString();
+    final dName = (json['driver_name'] ?? '').toString();
 
     return OrderModel(
       id: (json['id'] ?? '').toString(),
       station: Station.fromJson(json['station'] as Map<String, dynamic>? ?? {}),
       qrCodeData: qrCodeData,
       textCode: textCode,
-      date: DateTime.tryParse((json['generated_at'] ?? '').toString()) ?? DateTime.now(),
+      date: DateTime.tryParse((json['generated_at'] ?? '').toString()) ??
+          DateTime.now(),
       totalPrice: parsedTotal,
       extras: parsedExtras,
       status: mappedStatus,
       scheduledTime: (json['scheduled_time'] ?? 'Entrada Imediata').toString(),
+      driverName: dName.isEmpty ? null : dName,
     );
   }
 }

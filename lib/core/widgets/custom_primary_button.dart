@@ -22,43 +22,51 @@ class CustomPrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isEnabled = onPressed != null;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final disabledBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0);
+    final disabledFg = isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8);
 
     final child = Row(
       mainAxisAlignment: MainAxisAlignment.center,
       mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 18, color: isEnabled ? Colors.white : Colors.white38),
+          Icon(icon, size: 18, color: isEnabled ? Colors.white : disabledFg),
           const SizedBox(width: 8),
         ],
-        Text(
-          text,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: isEnabled ? Colors.white : Colors.white38,
-            letterSpacing: 0.2,
+        Flexible(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: isEnabled ? Colors.white : disabledFg,
+              letterSpacing: 0.1,
+            ),
           ),
         ),
       ],
     );
 
-    Widget button = Container(
+    final Widget button = Container(
       height: height,
       decoration: BoxDecoration(
-        gradient: isEnabled
-            ? (backgroundColor == null ? AppColors.buttonGradient : null)
+        gradient: isEnabled && backgroundColor == null
+            ? AppColors.buttonGradient
             : null,
-        color: isEnabled
-            ? backgroundColor
-            : const Color(0xFF2C2C2C),
+        color: isEnabled ? backgroundColor : disabledBg,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isEnabled
-              ? AppColors.buttonCyan.withValues(alpha: 0.6)
-              : Colors.white12,
-          width: 1,
-        ),
+        boxShadow: isEnabled
+            ? [
+                BoxShadow(
+                  color: (backgroundColor ?? AppColors.primary).withValues(alpha: 0.24),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
       ),
       child: Material(
         color: Colors.transparent,
@@ -100,7 +108,7 @@ class CustomSecondaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final isEnabled = onPressed != null;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = isDark ? AppColors.buttonSky : AppColors.buttonBlue;
+    final primaryColor = isDark ? AppColors.buttonSky : AppColors.primary;
 
     final child = Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -110,28 +118,34 @@ class CustomSecondaryButton extends StatelessWidget {
           Icon(icon, size: 17, color: isEnabled ? primaryColor : Colors.grey),
           const SizedBox(width: 6),
         ],
-        Text(
-          text,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-            color: isEnabled ? primaryColor : Colors.grey,
+        Flexible(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              color: isEnabled ? primaryColor : Colors.grey,
+            ),
           ),
         ),
       ],
     );
 
-    Widget button = SizedBox(
+    final Widget button = SizedBox(
       height: height,
       child: OutlinedButton(
         onPressed: isEnabled ? onPressed : null,
         style: OutlinedButton.styleFrom(
           side: BorderSide(
-            color: isEnabled ? AppColors.buttonSky : Colors.grey.withValues(alpha: 0.3),
+            color: isEnabled
+                ? primaryColor.withValues(alpha: 0.7)
+                : Colors.grey.withValues(alpha: 0.3),
             width: 1.2,
           ),
           backgroundColor: isEnabled
-              ? AppColors.buttonSky.withValues(alpha: isDark ? 0.12 : 0.08)
+              ? primaryColor.withValues(alpha: isDark ? 0.12 : 0.06)
               : null,
           padding: const EdgeInsets.symmetric(horizontal: 14),
           shape: RoundedRectangleBorder(

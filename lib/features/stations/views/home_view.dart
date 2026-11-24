@@ -3,6 +3,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/models/user_session.dart';
 import '../../auth/services/auth_service.dart';
+import '../../wallet/views/wallet_profile_view.dart';
 import '../models/station_model.dart';
 import '../services/api_service.dart';
 import 'widgets/station_grid.dart';
@@ -38,10 +39,12 @@ class _HomeViewState extends State<HomeView> {
     });
   }
 
-  void _reloadStations() {
+  Future<void> _reloadStations() async {
+    final future = _apiService.fetchAvailableStations();
     setState(() {
-      _stationsFuture = _apiService.fetchAvailableStations();
+      _stationsFuture = future;
     });
+    await future;
   }
 
   String _getTitle(bool isStaff) {
@@ -55,6 +58,8 @@ class _HomeViewState extends State<HomeView> {
         return 'Horários de Banho';
       case 3:
         return 'Meus QR Codes';
+      case 4:
+        return 'Minha Carteira';
       default:
         return 'iShower';
     }
@@ -75,7 +80,13 @@ class _HomeViewState extends State<HomeView> {
             if (activeSession != null)
               Text(
                 '${activeSession.name} (${activeSession.roleLabel})',
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w500,
+                  color: isDark
+                      ? AppColors.textSecondary
+                      : AppColors.lightTextSecondary,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
           ],
@@ -84,7 +95,7 @@ class _HomeViewState extends State<HomeView> {
           IconButton(
             icon: Icon(
               isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-              color: isDark ? AppColors.buttonCyan : AppColors.buttonBlue,
+              color: isDark ? AppColors.buttonSky : AppColors.primary,
             ),
             tooltip: isDark ? 'Ativar Modo Claro' : 'Ativar Modo Escuro',
             onPressed: AppTheme.toggleTheme,
@@ -97,38 +108,88 @@ class _HomeViewState extends State<HomeView> {
             ),
         ],
       ),
-      body: isStaff
-          ? AdminView(onStationsChanged: _reloadStations)
-          : FutureBuilder<List<Station>>(
-              future: _stationsFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                } else if (snapshot.hasError) {
-                  return Center(child: Text('Erro: ${snapshot.error}'));
-                }
-
-                final stations = snapshot.data ?? [];
-
-                return IndexedStack(
-                  index: _currentTabIndex,
+      body: Column(
+        children: [
+          ValueListenableBuilder<bool>(
+            valueListenable: ApiService.isOfflineNotifier,
+            builder: (context, isOffline, _) {
+              if (!isOffline) return const SizedBox.shrink();
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                color: AppColors.accentGold.withValues(alpha: 0.14),
+                child: Row(
                   children: [
-                    StationGrid(stations: stations),
-                    StationMap(stations: stations),
-                    const SchedulesView(),
-                    OrdersView(
-                      onExploreStations: () => _navigateToTab(0),
+                    const Icon(
+                      Icons.cloud_off_outlined,
+                      size: 16,
+                      color: AppColors.accentGold,
+                    ),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Modo demonstração offline (servidor indisponível)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.accentGold,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _reloadStations,
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        minimumSize: const Size(0, 28),
+                      ),
+                      child: const Text('Reconectar', style: TextStyle(fontSize: 12)),
                     ),
                   ],
-                );
-              },
-            ),
+                ),
+              );
+            },
+          ),
+          Expanded(
+            child: isStaff
+                ? AdminView(onStationsChanged: _reloadStations)
+                : FutureBuilder<List<Station>>(
+                    future: _stationsFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      } else if (snapshot.hasError) {
+                        return Center(child: Text('Erro: ${snapshot.error}'));
+                      }
+
+                      final stations = snapshot.data ?? [];
+
+                      return IndexedStack(
+                        index: _currentTabIndex,
+                        children: [
+                          StationGrid(
+                            stations: stations,
+                            onRefresh: _reloadStations,
+                          ),
+                          StationMap(stations: stations),
+                          const SchedulesView(embedded: true),
+                          OrdersView(
+                            embedded: true,
+                            onExploreStations: () => _navigateToTab(0),
+                          ),
+                          const WalletProfileView(),
+                        ],
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
       bottomNavigationBar: isStaff
           ? null
           : NavigationBar(
               selectedIndex: _currentTabIndex,
               onDestinationSelected: _navigateToTab,
-              height: 64,
+              height: 66,
               destinations: const [
                 NavigationDestination(
                   icon: Icon(Icons.shower_outlined),
@@ -148,7 +209,12 @@ class _HomeViewState extends State<HomeView> {
                 NavigationDestination(
                   icon: Icon(Icons.qr_code_outlined),
                   selectedIcon: Icon(Icons.qr_code),
-                  label: 'Ver QR Code',
+                  label: 'QR Code',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.account_balance_wallet_outlined),
+                  selectedIcon: Icon(Icons.account_balance_wallet),
+                  label: 'Carteira',
                 ),
               ],
             ),

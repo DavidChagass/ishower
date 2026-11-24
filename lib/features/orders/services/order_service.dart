@@ -1,10 +1,19 @@
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../auth/services/auth_service.dart';
 import '../models/order_model.dart';
 import '../../stations/models/station_model.dart';
 import '../../stations/services/api_service.dart';
+
+class OrderValidationResult {
+  final OrderModel? order;
+  final String? errorMessage;
+
+  const OrderValidationResult({this.order, this.errorMessage});
+  bool get isSuccess => order != null;
+}
 
 class OrderService {
   static final OrderService _instance = OrderService._internal();
@@ -16,6 +25,11 @@ class OrderService {
   OrderService._internal();
 
   final List<OrderModel> _orders = [];
+  final ValueNotifier<int> ordersVersion = ValueNotifier<int>(0);
+
+  void _notifyChanged() {
+    ordersVersion.value++;
+  }
 
   Map<String, String> _authHeaders({bool jsonContentType = false}) {
     final headers = <String, String>{};
@@ -65,6 +79,7 @@ class OrderService {
           .timeout(const Duration(seconds: 2));
 
       if (response.statusCode == 200) {
+        ApiService.isOfflineNotifier.value = false;
         final List<dynamic> data = jsonDecode(response.body);
         final fetched = data
             .whereType<Map<String, dynamic>>()
@@ -73,15 +88,17 @@ class OrderService {
         _orders
           ..clear()
           ..addAll(fetched);
+        _notifyChanged();
       }
     } catch (_) {
-      // Mantém lista local caso o backend esteja indisponível
+      ApiService.isOfflineNotifier.value = true;
     }
     return orders;
   }
 
   void addOrder(OrderModel order) {
     _orders.insert(0, order);
+    _notifyChanged();
   }
 
   Future<OrderModel> createOrder({
@@ -89,7 +106,21 @@ class OrderService {
     required List<String> extras,
     required double totalPrice,
     required String scheduledTime,
+    String paymentMethod = 'wallet',
   }) async {
+    if (!station.isAvailable) {
+      throw Exception('Este posto está temporariamente indisponível para reservas.');
+    }
+
+    final session = AuthService().currentSession;
+    if (paymentMethod == 'wallet' &&
+        session != null &&
+        session.isDriver &&
+        session.balance < totalPrice) {
+      throw Exception(
+          'Saldo insuficiente na carteira. Faça uma recarga PIX na aba Carteira ou selecione PIX Instantâneo.');
+    }
+
     try {
       final response = await http
           .post(
@@ -99,19 +130,37 @@ class OrderService {
               'station_id': station.id,
               'scheduled_time': scheduledTime,
               'extras': extras,
+              'payment_method': paymentMethod,
             }),
           )
           .timeout(const Duration(seconds: 3));
 
       if (response.statusCode == 201 || response.statusCode == 200) {
+        ApiService.isOfflineNotifier.value = false;
         final Map<String, dynamic> data = jsonDecode(response.body);
         final created = OrderModel.fromJson(data);
         _orders.removeWhere((o) => o.id == created.id);
         _orders.insert(0, created);
+        _notifyChanged();
+        await AuthService().refreshSession();
         return created;
+      } else if (response.statusCode == 402) {
+        throw Exception(
+            'Saldo insuficiente na carteira iShower. Faça uma recarga PIX na aba Carteira.');
+      } else if (response.statusCode == 409) {
+        throw Exception(
+            'Este posto está temporariamente indisponível para reservas.');
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        throw Exception('Sessão expirada ou sem permissão para reservar.');
       }
-    } catch (_) {
-      // Fallback local caso servidor esteja offline
+    } catch (e) {
+      final msg = e.toString();
+      if (msg.contains('Saldo insuficiente') ||
+          msg.contains('indisponível') ||
+          msg.contains('permissão')) {
+        rethrow;
+      }
+      ApiService.isOfflineNotifier.value = true;
     }
 
     final random = Random();
@@ -126,15 +175,62 @@ class OrderService {
       totalPrice: totalPrice,
       extras: extras,
       scheduledTime: scheduledTime,
+      driverName: session?.name,
     );
     addOrder(fallbackOrder);
+    if (paymentMethod == 'wallet') {
+      AuthService().recordLocalUsage(totalPrice, code);
+    }
     return fallbackOrder;
   }
 
-  Future<OrderModel?> validateOrderAsync(String code) async {
+  Future<OrderModel> cancelOrder(OrderModel target) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('${ApiService.baseUrl}/vouchers/${target.id}/cancel'),
+            headers: _authHeaders(jsonContentType: true),
+          )
+          .timeout(const Duration(seconds: 3));
+
+      if (response.statusCode == 200) {
+        ApiService.isOfflineNotifier.value = false;
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final updated = OrderModel.fromJson(data);
+        final idx = _orders.indexWhere((o) => o.id == updated.id);
+        if (idx >= 0) {
+          _orders[idx] = updated;
+        }
+        _notifyChanged();
+        await AuthService().refreshSession();
+        return updated;
+      } else if (response.statusCode == 403) {
+        throw Exception('Você não possui permissão para cancelar esta reserva.');
+      } else if (response.statusCode == 409) {
+        throw Exception('Apenas reservas ativas podem ser canceladas.');
+      }
+    } catch (e) {
+      final msg = e.toString();
+      if (msg.contains('permissão') || msg.contains('reservas ativas')) {
+        rethrow;
+      }
+      ApiService.isOfflineNotifier.value = true;
+    }
+
+    target.status = 'cancelado';
+    AuthService().recordLocalRefund(target.totalPrice, target.textCode);
+    _notifyChanged();
+    return target;
+  }
+
+  Future<OrderValidationResult> validateOrderDetailed(String code) async {
     final rawTrimmed = code.trim();
     final cleanCode = extractLookupCode(rawTrimmed);
-    if (cleanCode.isEmpty) return null;
+    if (cleanCode.isEmpty) {
+      return const OrderValidationResult(
+        errorMessage: 'Informe um código de 6 dígitos ou escaneie um QR Code.',
+      );
+    }
 
     try {
       final response = await http
@@ -146,6 +242,7 @@ class OrderService {
           .timeout(const Duration(seconds: 3));
 
       if (response.statusCode == 200) {
+        ApiService.isOfflineNotifier.value = false;
         final Map<String, dynamic> data = jsonDecode(response.body);
         if (data['voucher'] is Map<String, dynamic>) {
           final validated =
@@ -158,19 +255,44 @@ class OrderService {
           } else {
             _orders.insert(0, validated);
           }
-          return validated;
+          _notifyChanged();
+          return OrderValidationResult(order: validated);
         }
-      } else if (response.statusCode == 403 ||
-          response.statusCode == 404 ||
-          response.statusCode == 409) {
+      } else if (response.statusCode == 403) {
+        return const OrderValidationResult(
+          errorMessage: 'Acesso negado: este voucher pertence a outro posto.',
+        );
+      } else if (response.statusCode == 404) {
+        return const OrderValidationResult(
+          errorMessage: 'Código não encontrado na base de reservas.',
+        );
+      } else if (response.statusCode == 409) {
         await fetchOrders();
-        return null;
+        return const OrderValidationResult(
+          errorMessage: 'Este voucher já foi utilizado ou cancelado anteriormente.',
+        );
+      } else if (response.statusCode == 401) {
+        return const OrderValidationResult(
+          errorMessage: 'Sessão expirada. Faça login novamente.',
+        );
       }
     } catch (_) {
-      // Fallback local caso servidor esteja offline
+      ApiService.isOfflineNotifier.value = true;
     }
 
-    return validateOrder(cleanCode);
+    final local = validateOrder(cleanCode);
+    if (local != null) {
+      _notifyChanged();
+      return OrderValidationResult(order: local);
+    }
+    return const OrderValidationResult(
+      errorMessage: 'Código inválido, pertence a outro posto ou já foi utilizado.',
+    );
+  }
+
+  Future<OrderModel?> validateOrderAsync(String code) async {
+    final result = await validateOrderDetailed(code);
+    return result.order;
   }
 
   OrderModel? validateOrder(String code) {

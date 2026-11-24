@@ -27,6 +27,7 @@ class _CheckoutViewState extends State<CheckoutView> {
   final Set<String> _selectedServiceNames = {};
   bool _isSubmitting = false;
   String _paymentMethod = 'wallet'; // 'wallet' | 'pix'
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -65,53 +66,72 @@ class _CheckoutViewState extends State<CheckoutView> {
 
   Future<void> _confirmReservation(BuildContext context) async {
     if (_isSubmitting) return;
-    setState(() => _isSubmitting = true);
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
 
     final List<String> extras = _availableServices
         .where((srv) => _selectedServiceNames.contains(srv.name))
         .map((srv) => srv.name)
         .toList();
 
-    final newOrder = await OrderService().createOrder(
-      station: widget.station,
-      extras: extras,
-      totalPrice: _totalPrice,
-      scheduledTime: _currentSchedule,
-    );
+    try {
+      final newOrder = await OrderService().createOrder(
+        station: widget.station,
+        extras: extras,
+        totalPrice: _totalPrice,
+        scheduledTime: _currentSchedule,
+        paymentMethod: _paymentMethod,
+      );
 
-    if (_paymentMethod == 'wallet') {
-      AuthService().deductBalance(_totalPrice);
+      if (!context.mounted) return;
+      setState(() => _isSubmitting = false);
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => QrCodeSheet(order: newOrder),
+      ).then((_) {
+        if (context.mounted) {
+          Navigator.pop(context);
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Reserva confirmada! Dirija-se ao caixa ou catraca.'),
+          backgroundColor: AppColors.statusAvailable,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      setState(() {
+        _isSubmitting = false;
+        _errorMessage = msg;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: AppColors.statusBusy,
+        ),
+      );
     }
-
-    if (!context.mounted) return;
-    setState(() => _isSubmitting = false);
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => QrCodeSheet(order: newOrder),
-    ).then((_) {
-      if (context.mounted) {
-        Navigator.pop(context);
-      }
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Reserva confirmada! Dirija-se ao caixa ou catraca.')),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryBlue = isDark ? AppColors.buttonSky : AppColors.buttonBlue;
+    final primaryBlue = isDark ? AppColors.buttonSky : AppColors.primary;
     final cardBg = isDark ? AppColors.cardBackground : AppColors.lightCard;
     final borderCol = isDark ? AppColors.border : AppColors.lightBorder;
-    final textCol = isDark ? Colors.white : AppColors.lightTextPrimary;
+    final textCol = isDark ? AppColors.textPrimary : AppColors.lightTextPrimary;
     final textSub = isDark ? AppColors.textSecondary : AppColors.lightTextSecondary;
+    final walletBalance = AuthService().currentSession?.balance ?? 150.0;
+    final insufficientWallet = _paymentMethod == 'wallet' && walletBalance < _totalPrice;
 
     return Scaffold(
-      backgroundColor: isDark ? AppColors.background : AppColors.lightBackground,
       appBar: AppBar(
         title: const Text('Confirmar Reserva'),
       ),
@@ -120,8 +140,33 @@ class _CheckoutViewState extends State<CheckoutView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Resumo da Reserva', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textCol)),
-            const SizedBox(height: 16),
+            if (_errorMessage != null) ...[
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.statusBusyBackground,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.statusBusy.withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(
+                    color: AppColors.statusBusy,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+            Text(
+              'Resumo da Reserva',
+              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: textCol),
+            ),
+            const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
@@ -132,68 +177,54 @@ class _CheckoutViewState extends State<CheckoutView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(widget.station.name, style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: textCol)),
-                  const SizedBox(height: 6),
-                  Text(widget.station.address, style: TextStyle(color: textSub, fontSize: 13)),
-                  Divider(height: 24, color: borderCol),
-
-                  // Horário
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Horário:', style: TextStyle(fontSize: 14, color: textSub)),
-                      Text(
-                        _currentSchedule,
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: primaryBlue),
-                      ),
-                    ],
+                  Text(
+                    widget.station.name,
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: textCol,
+                    ),
                   ),
-                  const SizedBox(height: 8),
-
-                  // Regras: tempo limite de banho + limpeza
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Tempo de banho:', style: TextStyle(fontSize: 14, color: textSub)),
-                      Text(
-                        '${widget.station.maxShowerMinutes} minutos limite',
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.accentGold),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Limpeza pós-uso:', style: TextStyle(fontSize: 14, color: textSub)),
-                      Text(
-                        '${widget.station.cleaningDuration} higienização',
-                        style: TextStyle(fontSize: 13, color: textSub),
-                      ),
-                    ],
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.station.address,
+                    style: TextStyle(color: textSub, fontSize: 13),
                   ),
                   Divider(height: 24, color: borderCol),
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Valor do Chuveiro', style: TextStyle(fontSize: 15, color: textSub)),
-                      Text(
-                        Formatters.formatCurrency(widget.station.price),
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: textCol,
-                        ),
-                      ),
-                    ],
+                  _summaryRow('Horário:', _currentSchedule, textSub, primaryBlue, bold: true),
+                  const SizedBox(height: 8),
+                  _summaryRow(
+                    'Tempo de banho:',
+                    '${widget.station.maxShowerMinutes} minutos limite',
+                    textSub,
+                    AppColors.accentGold,
+                    bold: true,
+                  ),
+                  const SizedBox(height: 8),
+                  _summaryRow(
+                    'Limpeza pós-uso:',
+                    '${widget.station.cleaningDuration} higienização',
+                    textSub,
+                    textSub,
+                  ),
+                  Divider(height: 24, color: borderCol),
+                  _summaryRow(
+                    'Valor do Chuveiro',
+                    Formatters.formatCurrency(widget.station.price),
+                    textSub,
+                    textCol,
+                    bold: true,
+                    valueSize: 16,
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 24),
-            Text('Adicionais', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textCol)),
-            const SizedBox(height: 12),
+            const SizedBox(height: 22),
+            Text(
+              'Adicionais',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: textCol),
+            ),
+            const SizedBox(height: 10),
             Container(
               decoration: BoxDecoration(
                 color: cardBg,
@@ -207,13 +238,13 @@ class _CheckoutViewState extends State<CheckoutView> {
                     CheckboxListTile(
                       title: Text(
                         _availableServices[i].name,
-                        style: TextStyle(color: textCol, fontWeight: FontWeight.w500),
+                        style: TextStyle(color: textCol, fontWeight: FontWeight.w600),
                       ),
                       subtitle: Text(
                         _availableServices[i].description.isNotEmpty
                             ? '${_availableServices[i].description} · + ${Formatters.formatCurrency(_availableServices[i].price)}'
                             : '+ ${Formatters.formatCurrency(_availableServices[i].price)}',
-                        style: TextStyle(color: primaryBlue),
+                        style: TextStyle(color: primaryBlue, fontSize: 12.5),
                       ),
                       value: _selectedServiceNames.contains(_availableServices[i].name),
                       activeColor: primaryBlue,
@@ -234,7 +265,7 @@ class _CheckoutViewState extends State<CheckoutView> {
             const SizedBox(height: 20),
             Text(
               'Forma de Pagamento (Simulação)',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textCol),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textCol),
             ),
             const SizedBox(height: 10),
             Container(
@@ -266,11 +297,23 @@ class _CheckoutViewState extends State<CheckoutView> {
                               children: [
                                 Text(
                                   'Saldo Carteira iShower',
-                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textCol),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: textCol,
+                                  ),
                                 ),
                                 Text(
-                                  'Disponível: ${Formatters.formatCurrency(AuthService().currentSession?.balance ?? 150.0)}',
-                                  style: TextStyle(fontSize: 12, color: textSub),
+                                  'Disponível: ${Formatters.formatCurrency(walletBalance)}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: insufficientWallet
+                                        ? AppColors.statusBusy
+                                        : textSub,
+                                    fontWeight: insufficientWallet
+                                        ? FontWeight.w700
+                                        : FontWeight.normal,
+                                  ),
                                 ),
                               ],
                             ),
@@ -279,7 +322,7 @@ class _CheckoutViewState extends State<CheckoutView> {
                       ),
                     ),
                   ),
-                  const Divider(height: 8),
+                  Divider(height: 8, color: borderCol),
                   InkWell(
                     borderRadius: BorderRadius.circular(10),
                     onTap: () => setState(() => _paymentMethod = 'pix'),
@@ -300,7 +343,11 @@ class _CheckoutViewState extends State<CheckoutView> {
                               children: [
                                 Text(
                                   'PIX Instantâneo (Mockup)',
-                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textCol),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: textCol,
+                                  ),
                                 ),
                                 Text(
                                   'Aprovação imediata para geração do QR Code',
@@ -316,31 +363,68 @@ class _CheckoutViewState extends State<CheckoutView> {
                 ],
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 22),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Total a pagar', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textCol)),
+                Text(
+                  'Total a pagar',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: textCol,
+                  ),
+                ),
                 Text(
                   Formatters.formatCurrency(_totalPrice),
                   style: TextStyle(
                     fontSize: 26,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w800,
                     color: primaryBlue,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             CustomPrimaryButton(
               height: 48,
-              text: _isSubmitting ? 'Registrando Pedido...' : 'Confirmar e Gerar Código',
+              text: _isSubmitting
+                  ? 'Registrando Pedido...'
+                  : 'Confirmar e Gerar Código',
               icon: Icons.qr_code,
               onPressed: _isSubmitting ? null : () => _confirmReservation(context),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _summaryRow(
+    String label,
+    String value,
+    Color labelColor,
+    Color valueColor, {
+    bool bold = false,
+    double valueSize = 14,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(fontSize: 14, color: labelColor)),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: TextStyle(
+              fontSize: valueSize,
+              fontWeight: bold ? FontWeight.w700 : FontWeight.normal,
+              color: valueColor,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

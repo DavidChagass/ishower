@@ -1,61 +1,57 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Cores Dark Mode (Essência Dark MVP)
-  static const Color background = Color(0xFF121212);
-  static const Color cardBackground = Color(0xFF1E1E1E);
-  static const Color surface = Color(0xFF1E1E1E);
-  static const Color cardSurface = Color(0xFF262626);
-  static const Color border = Color(0xFF2E2E2E);
+  // Unified Brand Palette (aligned with iShower Portal Web)
+  static const Color primary = Color(0xFF0878E9);
+  static const Color primaryDark = Color(0xFF0661BE);
+  static const Color primaryLight = Color(0xFF1599F5);
+  static const Color navy = Color(0xFF0F1E36);
+  static const Color accentGold = Color(0xFFD97706);
 
-  // Cores Light Mode (Adaptado mantendo as cores dos postos/marca)
-  static const Color lightBackground = Color(0xFFF6F8FC);
+  // Clean Light Mode (Default — aligned with Portal Web)
+  static const Color lightBackground = Color(0xFFF5F7FB);
   static const Color lightCard = Color(0xFFFFFFFF);
-  static const Color lightSurface = Color(0xFFEEF2F6);
+  static const Color lightSurface = Color(0xFFEEF2F7);
   static const Color lightBorder = Color(0xFFE2E8F0);
-  static const Color lightTextPrimary = Color(0xFF1E293B);
+  static const Color lightTextPrimary = Color(0xFF0F172A);
   static const Color lightTextSecondary = Color(0xFF64748B);
 
-  // Paleta de Azuis Principais e Dourado (#160AFA, #0A96FA, #FAB60A)
-  static const Color primaryDark = Color(0xFF160AFA); // #160AFA (Azul Escuro / Royal Profundo)
-  static const Color primary = Color(0xFF0A96FA);     // #0A96FA (Azul Claro / Azure Vibrante)
-  static const Color accentGold = Color(0xFFFAB60A);  // #FAB60A (Dourado / Âmbar para Contraste)
+  // Sleek Dark Mode (Deep Slate Navy)
+  static const Color background = Color(0xFF0B1220);
+  static const Color cardBackground = Color(0xFF131E32);
+  static const Color surface = Color(0xFF18263E);
+  static const Color cardSurface = Color(0xFF1E2E4A);
+  static const Color border = Color(0xFF233552);
+  static const Color textPrimary = Color(0xFFF8FAFC);
+  static const Color textSecondary = Color(0xFF94A3B8);
+  static const Color textMuted = Color(0xFF64748B);
 
-  // Novas Cores para Botões (#00FAE8, #00BBFA, #006DFA) - Muito mais vivas!
-  static const Color buttonCyan = Color(0xFF00FAE8);  // #00FAE8 (Aqua / Ciano Neon)
-  static const Color buttonSky = Color(0xFF00BBFA);   // #00BBFA (Azul Céu Límpido)
-  static const Color buttonBlue = Color(0xFF006DFA);  // #006DFA (Azul Elétrico Vibrante)
+  // Interactive Blue Accents (Light & Dark accessible)
+  static const Color buttonBlue = Color(0xFF0878E9);
+  static const Color buttonSky = Color(0xFF38BDF8);
+  static const Color buttonCyan = Color(0xFF38BDF8);
+  static const Color secondary = Color(0xFFD97706);
+  static const Color accent = Color(0xFFD97706);
 
-  // Aliases
-  static const Color primaryLight = Color(0xFF0A96FA);
-  static const Color secondary = Color(0xFFFAB60A);
-  static const Color accent = Color(0xFFFAB60A);
+  // Semantic Status Colors
+  static const Color statusAvailable = Color(0xFF16A34A);
+  static const Color statusAvailableBackground = Color(0x1F16A34A);
+  static const Color statusBusy = Color(0xFFDC2626);
+  static const Color statusBusyBackground = Color(0x1FDC2626);
+  static const Color statusCleaning = Color(0xFFD97706);
+  static const Color statusCleaningBackground = Color(0x1FD97706);
 
-  // Tipografia Dark (padrão)
-  static const Color textPrimary = Colors.white;
-  static const Color textSecondary = Colors.grey;
-  static const Color textMuted = Color(0xFF9E9E9E);
-
-  // Status de disponibilidade
-  static const Color statusAvailable = Colors.greenAccent;
-  static const Color statusAvailableBackground = Color(0x3369F0AE); // 20% opacity greenAccent
-  static const Color statusBusy = Colors.redAccent;
-  static const Color statusBusyBackground = Color(0x33FF5252); // 20% opacity redAccent
-  static const Color statusCleaning = Color(0xFFFAB60A);
-  static const Color statusCleaningBackground = Color(0x33FAB60A);
-
-  // Gradiente vibrante dos botões (#006DFA -> #00BBFA)
+  // Cohesive Brand Gradients
   static const LinearGradient buttonGradient = LinearGradient(
-    colors: [Color(0xFF006DFA), Color(0xFF00BBFA)],
+    colors: [Color(0xFF0878E9), Color(0xFF1599F5)],
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
   );
 
-  // Gradiente com os azuis da marca (#160AFA e #0A96FA)
   static const LinearGradient blueGradient = LinearGradient(
-    colors: [Color(0xFF160AFA), Color(0xFF0A96FA)],
-    begin: Alignment.centerLeft,
-    end: Alignment.centerRight,
+    colors: [Color(0xFF0754B2), Color(0xFF0878E9), Color(0xFF1599F5)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
   );
 
   static const LinearGradient primaryGradient = buttonGradient;
