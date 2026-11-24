@@ -96,6 +96,11 @@ class OrderService {
     return orders;
   }
 
+  void clearLocalOrders() {
+    _orders.clear();
+    _notifyChanged();
+  }
+
   void addOrder(OrderModel order) {
     _orders.insert(0, order);
     _notifyChanged();
@@ -142,7 +147,7 @@ class OrderService {
         _orders.removeWhere((o) => o.id == created.id);
         _orders.insert(0, created);
         _notifyChanged();
-        await AuthService().refreshSession();
+        await AuthService().refreshSession(notifyWallet: true);
         return created;
       } else if (response.statusCode == 402) {
         throw Exception(
@@ -202,7 +207,7 @@ class OrderService {
           _orders[idx] = updated;
         }
         _notifyChanged();
-        await AuthService().refreshSession();
+        await AuthService().refreshSession(notifyWallet: true);
         return updated;
       } else if (response.statusCode == 403) {
         throw Exception('Você não possui permissão para cancelar esta reserva.');

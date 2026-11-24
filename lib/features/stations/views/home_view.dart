@@ -10,6 +10,7 @@ import 'widgets/station_grid.dart';
 import 'widgets/station_map.dart';
 import '../../admin/views/admin_view.dart';
 import '../../schedules/views/schedules_view.dart';
+import '../../orders/services/order_service.dart';
 import '../../orders/views/orders_view.dart';
 
 class HomeView extends StatefulWidget {
@@ -104,7 +105,10 @@ class _HomeViewState extends State<HomeView> {
             IconButton(
               icon: const Icon(Icons.logout_outlined),
               tooltip: 'Sair da conta',
-              onPressed: () => AuthService().logout(),
+              onPressed: () {
+                OrderService().clearLocalOrders();
+                AuthService().logout();
+              },
             ),
         ],
       ),

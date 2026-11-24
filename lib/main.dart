@@ -49,7 +49,10 @@ class _IShowerAppState extends State<IShowerApp> {
               if (session == null) {
                 return const AuthView();
               }
-              return HomeView(session: session);
+              return HomeView(
+                key: ValueKey(session.userId),
+                session: session,
+              );
             },
           ),
         );

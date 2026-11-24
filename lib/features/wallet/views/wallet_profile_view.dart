@@ -17,11 +17,13 @@ class _WalletProfileViewState extends State<WalletProfileView> {
   bool _loading = true;
   bool _depositing = false;
 
+  bool _isRefreshing = false;
+
   @override
   void initState() {
     super.initState();
     _authService.walletVersion.addListener(_onWalletChanged);
-    _refresh();
+    _refresh(syncSession: true);
   }
 
   @override
@@ -32,18 +34,26 @@ class _WalletProfileViewState extends State<WalletProfileView> {
 
   void _onWalletChanged() {
     if (mounted) {
-      _refresh();
+      _refresh(syncSession: false);
     }
   }
 
-  Future<void> _refresh() async {
-    await _authService.refreshSession();
-    final txs = await _authService.fetchTransactions();
-    if (!mounted) return;
-    setState(() {
-      _transactions = txs;
-      _loading = false;
-    });
+  Future<void> _refresh({bool syncSession = true}) async {
+    if (_isRefreshing) return;
+    _isRefreshing = true;
+    try {
+      if (syncSession) {
+        await _authService.refreshSession(notifyWallet: false);
+      }
+      final txs = await _authService.fetchTransactions();
+      if (!mounted) return;
+      setState(() {
+        _transactions = txs;
+        _loading = false;
+      });
+    } finally {
+      _isRefreshing = false;
+    }
   }
 
   Future<void> _depositPix(double amount) async {
@@ -60,7 +70,7 @@ class _WalletProfileViewState extends State<WalletProfileView> {
           backgroundColor: AppColors.statusAvailable,
         ),
       );
-      await _refresh();
+      await _refresh(syncSession: false);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

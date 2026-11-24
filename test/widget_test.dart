@@ -74,6 +74,24 @@ void main() {
       await tester.tap(find.text('+ R\$ 50'));
       await tester.pumpAndSettle();
       expect(AuthService().currentSession?.balance, greaterThanOrEqualTo(200.0));
+
+      // Regression test: Make a purchase and then logout cleanly
+      await tester.tap(find.byIcon(Icons.shower_outlined));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Reservar').first);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Confirmar e Gerar Código'));
+      await tester.tap(find.text('Confirmar e Gerar Código'));
+      await tester.pumpAndSettle();
+      // Close QR bottom sheet -> returns to HomeView
+      await tester.tap(find.text('Fechar'));
+      await tester.pumpAndSettle();
+
+      // Click Logout button -> must return cleanly to AuthView
+      await tester.tap(find.byIcon(Icons.logout_outlined));
+      await tester.pumpAndSettle();
+      expect(AuthService().currentSession, isNull);
+      expect(find.text('Entrar'), findsWidgets);
     },
   );
 

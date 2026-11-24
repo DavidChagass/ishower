@@ -122,27 +122,42 @@ class AuthService {
     }
   }
 
-  Future<void> refreshSession() async {
+  Future<void> refreshSession({bool notifyWallet = false}) async {
     final current = sessionNotifier.value;
-    if (current == null || current.token.isEmpty || current.token.startsWith('local-')) {
+    if (current == null ||
+        current.token.isEmpty ||
+        current.token.startsWith('local-')) {
       return;
     }
+
+    final snapshotToken = current.token;
+    final snapshotUserId = current.userId;
 
     try {
       final response = await http
           .get(
             Uri.parse('${ApiService.baseUrl}/auth/me'),
-            headers: {'Authorization': 'Bearer ${current.token}'},
+            headers: {'Authorization': 'Bearer $snapshotToken'},
           )
           .timeout(const Duration(seconds: 3));
+
+      // Se o usuário deslogou ou trocou de conta enquanto a requisição estava em andamento, ignora!
+      final latest = sessionNotifier.value;
+      if (latest == null ||
+          latest.token != snapshotToken ||
+          latest.userId != snapshotUserId) {
+        return;
+      }
 
       if (response.statusCode == 200) {
         ApiService.isOfflineNotifier.value = false;
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        data['token'] = current.token;
+        data['token'] = snapshotToken;
         final refreshed = UserSession.fromJson(data);
         sessionNotifier.value = refreshed;
-        walletVersion.value++;
+        if (notifyWallet) {
+          walletVersion.value++;
+        }
         await _persistSession(refreshed);
       }
     } catch (_) {
